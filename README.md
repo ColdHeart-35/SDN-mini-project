@@ -175,21 +175,6 @@ ovs-vsctl show
 
 ---
 
-## 👨‍💻 Author
-
-**Manoj Kumar**
-
----
-
-## ⭐ Future Improvements
-
-* GUI-based monitoring dashboard
-* Dynamic rule configuration
-* Integration with machine learning for anomaly detection
-* Multi-switch topology support
-
----
-
 ## 📌 Conclusion
 
 This project demonstrates how **Software Defined Networking (SDN)** enables flexible and programmable network security.

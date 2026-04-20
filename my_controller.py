@@ -2,7 +2,7 @@ from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER, set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet, ethernet, ipv4
+from ryu.lib.packet import packet, ethernet, ipv4, arp
 
 
 class MyController(app_manager.RyuApp):
@@ -15,7 +15,7 @@ class MyController(app_manager.RyuApp):
         self.allowed_flows = set()
         self.mac_to_port = {}
 
-        self.logger.info("🔥 Firewall LOGGING MODE Started")
+        self.logger.info("🔥 Firewall Controller Started")
 
     def add_flow(self, dp, priority, match, actions):
         ofproto = dp.ofproto
@@ -38,14 +38,12 @@ class MyController(app_manager.RyuApp):
         ofproto = dp.ofproto
 
         match = parser.OFPMatch()
-
         actions = [parser.OFPActionOutput(
             ofproto.OFPP_CONTROLLER,
             ofproto.OFPCML_NO_BUFFER
         )]
 
         self.add_flow(dp, 0, match, actions)
-
         self.logger.info("⚡ Switch connected!")
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -59,9 +57,8 @@ class MyController(app_manager.RyuApp):
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
-        ip = pkt.get_protocol(ipv4.ipv4)
 
-        # 🔥 MAC LEARNING (ALWAYS)
+        # MAC learning (IMPORTANT)
         dpid = dp.id
         self.mac_to_port.setdefault(dpid, {})
         self.mac_to_port[dpid][eth.src] = in_port
@@ -73,40 +70,48 @@ class MyController(app_manager.RyuApp):
 
         actions = [parser.OFPActionOutput(out_port)]
 
-        # ✅ HANDLE NON-IP (ARP etc.)
-        if not ip:
-            dp.send_msg(parser.OFPPacketOut(
+        # 🔥 HANDLE ARP (VERY IMPORTANT)
+        arp_pkt = pkt.get_protocol(arp.arp)
+        if arp_pkt:
+            self.logger.info(f"🔄 ARP: {arp_pkt.src_ip} → {arp_pkt.dst_ip}")
+
+            out = parser.OFPPacketOut(
                 datapath=dp,
                 buffer_id=ofproto.OFP_NO_BUFFER,
                 in_port=in_port,
                 actions=actions,
                 data=msg.data
-            ))
+            )
+            dp.send_msg(out)
+            return
+
+        # 🔥 HANDLE IP
+        ip = pkt.get_protocol(ipv4.ipv4)
+        if not ip:
             return
 
         src = ip.src
         dst = ip.dst
 
-        # 🔥 LOG EVERY PACKET
         self.logger.info(f"📦 Packet: {src} → {dst}")
 
-        # ❌ BLOCK
-        if (src, dst) == self.blocked:
+       # BLOCK RULE (STATEFUL FIX)
+        if (src, dst) == self.blocked and (dst, src) not in self.allowed_flows:
             self.logger.info(f"❌ BLOCKED: {src} → {dst}")
             return
-
-        # 🔁 REPLY
+        # STATEFUL LOGIC
         if (dst, src) in self.allowed_flows:
             self.logger.info(f"🔁 REPLY ALLOWED: {src} → {dst}")
         else:
             self.logger.info(f"✅ ALLOWED: {src} → {dst}")
             self.allowed_flows.add((src, dst))
 
-        # SEND PACKET
-        dp.send_msg(parser.OFPPacketOut(
+        # FORWARD PACKET
+        out = parser.OFPPacketOut(
             datapath=dp,
             buffer_id=ofproto.OFP_NO_BUFFER,
             in_port=in_port,
             actions=actions,
             data=msg.data
-        ))
+        )
+        dp.send_msg(out)

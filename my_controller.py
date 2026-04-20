@@ -5,21 +5,18 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, arp
 
 
-class MyController(app_manager.RyuApp):
+class QoSController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(MyController, self).__init__(*args, **kwargs)
-
-        self.blocked = ("10.0.0.1", "10.0.0.2")
-        self.allowed_flows = set()
+        super(QoSController, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-        self.logger.info("🔥 Firewall Controller Started")
+        self.logger.info("🚀 QoS Priority Controller Started")
 
     def add_flow(self, dp, priority, match, actions):
-        ofproto = dp.ofproto
         parser = dp.ofproto_parser
+        ofproto = dp.ofproto
 
         inst = [parser.OFPInstructionActions(
             ofproto.OFPIT_APPLY_ACTIONS, actions)]
@@ -40,10 +37,10 @@ class MyController(app_manager.RyuApp):
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(
             ofproto.OFPP_CONTROLLER,
-            ofproto.OFPCML_NO_BUFFER
-        )]
+            ofproto.OFPCML_NO_BUFFER)]
 
         self.add_flow(dp, 0, match, actions)
+
         self.logger.info("⚡ Switch connected!")
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -58,7 +55,6 @@ class MyController(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
 
-        # MAC learning (IMPORTANT)
         dpid = dp.id
         self.mac_to_port.setdefault(dpid, {})
         self.mac_to_port[dpid][eth.src] = in_port
@@ -70,22 +66,19 @@ class MyController(app_manager.RyuApp):
 
         actions = [parser.OFPActionOutput(out_port)]
 
-        # 🔥 HANDLE ARP (VERY IMPORTANT)
+        # 🔄 Handle ARP
         arp_pkt = pkt.get_protocol(arp.arp)
         if arp_pkt:
             self.logger.info(f"🔄 ARP: {arp_pkt.src_ip} → {arp_pkt.dst_ip}")
-
-            out = parser.OFPPacketOut(
+            dp.send_msg(parser.OFPPacketOut(
                 datapath=dp,
                 buffer_id=ofproto.OFP_NO_BUFFER,
                 in_port=in_port,
                 actions=actions,
-                data=msg.data
-            )
-            dp.send_msg(out)
+                data=msg.data))
             return
 
-        # 🔥 HANDLE IP
+        # 🌐 Handle IP
         ip = pkt.get_protocol(ipv4.ipv4)
         if not ip:
             return
@@ -95,23 +88,18 @@ class MyController(app_manager.RyuApp):
 
         self.logger.info(f"📦 Packet: {src} → {dst}")
 
-       # BLOCK RULE (STATEFUL FIX)
-        if (src, dst) == self.blocked and (dst, src) not in self.allowed_flows:
-            self.logger.info(f"❌ BLOCKED: {src} → {dst}")
-            return
-        # STATEFUL LOGIC
-        if (dst, src) in self.allowed_flows:
-            self.logger.info(f"🔁 REPLY ALLOWED: {src} → {dst}")
+        # 🔥 QoS PRIORITY LOGIC
+        if src == "10.0.0.1":
+            self.logger.info(f"🔥 HIGH PRIORITY: {src} → {dst}")
+        elif src == "10.0.0.2":
+            self.logger.info(f"🐢 LOW PRIORITY: {src} → {dst}")
         else:
-            self.logger.info(f"✅ ALLOWED: {src} → {dst}")
-            self.allowed_flows.add((src, dst))
+            self.logger.info(f"⚪ NORMAL PRIORITY: {src} → {dst}")
 
-        # FORWARD PACKET
-        out = parser.OFPPacketOut(
+        # Forward packet
+        dp.send_msg(parser.OFPPacketOut(
             datapath=dp,
             buffer_id=ofproto.OFP_NO_BUFFER,
             in_port=in_port,
             actions=actions,
-            data=msg.data
-        )
-        dp.send_msg(out)
+            data=msg.data))

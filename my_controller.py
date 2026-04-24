@@ -12,7 +12,7 @@ class QoSController(app_manager.RyuApp):
         super(QoSController, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-        self.logger.info("🚀 QoS Priority Controller Started")
+        self.logger.info(" QoS Priority Controller Started")
 
     def add_flow(self, dp, priority, match, actions):
         parser = dp.ofproto_parser
@@ -41,7 +41,7 @@ class QoSController(app_manager.RyuApp):
 
         self.add_flow(dp, 0, match, actions)
 
-        self.logger.info("⚡ Switch connected!")
+        self.logger.info(" Switch connected!")
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -69,7 +69,7 @@ class QoSController(app_manager.RyuApp):
         # 🔄 Handle ARP
         arp_pkt = pkt.get_protocol(arp.arp)
         if arp_pkt:
-            self.logger.info(f"🔄 ARP: {arp_pkt.src_ip} → {arp_pkt.dst_ip}")
+            self.logger.info(f" ARP: {arp_pkt.src_ip} → {arp_pkt.dst_ip}")
             dp.send_msg(parser.OFPPacketOut(
                 datapath=dp,
                 buffer_id=ofproto.OFP_NO_BUFFER,
@@ -86,15 +86,15 @@ class QoSController(app_manager.RyuApp):
         src = ip.src
         dst = ip.dst
 
-        self.logger.info(f"📦 Packet: {src} → {dst}")
+        self.logger.info(f" Packet: {src} → {dst}")
 
         # 🔥 QoS PRIORITY LOGIC
         if src == "10.0.0.1":
-            self.logger.info(f"🔥 HIGH PRIORITY: {src} → {dst}")
+            self.logger.info(f" HIGH PRIORITY: {src} → {dst}")
         elif src == "10.0.0.2":
-            self.logger.info(f"🐢 LOW PRIORITY: {src} → {dst}")
+            self.logger.info(f" LOW PRIORITY: {src} → {dst}")
         else:
-            self.logger.info(f"⚪ NORMAL PRIORITY: {src} → {dst}")
+            self.logger.info(f" NORMAL PRIORITY: {src} → {dst}")
 
         # Forward packet
         dp.send_msg(parser.OFPPacketOut(
